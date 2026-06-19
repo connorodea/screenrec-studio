@@ -1,0 +1,16 @@
+{
+  "name": "screenrec-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ScreenRec Studio backend + watch page (Next.js @ hetznerCO). See ../docs/share-loop-spec.md.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

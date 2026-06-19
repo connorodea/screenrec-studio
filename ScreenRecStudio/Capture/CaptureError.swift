@@ -8,6 +8,7 @@ enum CaptureError: Error, LocalizedError {
     case noDisplays
     case noShareableContent
     case noMicrophone
+    case noCamera
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ enum CaptureError: Error, LocalizedError {
             return "Could not read the list of capturable displays."
         case .noMicrophone:
             return "No microphone is available."
+        case .noCamera:
+            return "No camera is available."
         }
     }
 }

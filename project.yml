@@ -1,0 +1,69 @@
+# XcodeGen project spec — the source of truth for ScreenRecStudio.xcodeproj.
+# Regenerate the project with:  xcodegen generate
+# The generated .xcodeproj is gitignored; this file is committed instead.
+name: ScreenRecStudio
+
+options:
+  bundleIdPrefix: com.connorodea
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # Full Swift 6 concurrency checking — the capture path is deliberately off
+    # the main actor, so we keep the default (nonisolated) module isolation and
+    # annotate UI types @MainActor explicitly. Do NOT set
+    # SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor here.
+    SWIFT_STRICT_CONCURRENCY: complete
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+targets:
+  ScreenRecStudio:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: ScreenRecStudio
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.connorodea.ScreenRecStudio
+        PRODUCT_NAME: ScreenRecStudio
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: ScreenRecStudio/Support/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ScreenRecStudio/Support/ScreenRecStudio.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: NO
+        # Sign to run locally; ad-hoc ("-") is enough for a dev build + TCC.
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+
+  ScreenRecStudioTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: ScreenRecStudioTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.connorodea.ScreenRecStudioTests
+    dependencies:
+      - target: ScreenRecStudio
+
+schemes:
+  ScreenRecStudio:
+    build:
+      targets:
+        ScreenRecStudio: all
+        ScreenRecStudioTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - ScreenRecStudioTests

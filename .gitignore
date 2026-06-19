@@ -1,0 +1,18 @@
+# XcodeGen output — regenerated from project.yml, never committed
+*.xcodeproj
+
+# Build products
+.build/
+DerivedData/
+build/
+*.xcuserstate
+*.xcuserdatad/
+
+# SwiftPM
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Captured recordings (in case anyone points output here during dev)
+/Recordings/

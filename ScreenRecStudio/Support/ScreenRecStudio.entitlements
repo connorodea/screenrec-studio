@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- v1 ships via Developer ID (not the Mac App Store), so the app is NOT
+	     sandboxed. This keeps file export paths simple and avoids sandbox/TCC
+	     interaction edge cases during capture. Hardened runtime stays ON
+	     (ENABLE_HARDENED_RUNTIME in project.yml); no runtime exceptions are
+	     needed for ScreenCaptureKit on this path. -->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+</dict>
+</plist>

@@ -1,29 +1,42 @@
 import ScreenCaptureKit
 import CoreMedia
+import AVFoundation
 
 /// Single-ownership transfer token for moving a non-`Sendable` `CMSampleBuffer`
-/// from the ScreenCaptureKit callback queue into the `ScreenRecorder` actor.
+/// from the ScreenCaptureKit / AVCaptureSession callback queue into the
+/// `ScreenRecorder` actor.
 ///
 /// Sound because exactly one box is created per frame, it is yielded into an
-/// ordered `AsyncStream` and consumed by exactly one actor, and the adapter keeps
+/// ordered `AsyncStream` and consumed by exactly one actor, and the source keeps
 /// no alias to the buffer after yielding.
 struct SampleBox: @unchecked Sendable {
     let buffer: CMSampleBuffer
 }
 
-/// Owns the `SCStream` and bridges its callback-queue frames into an ordered,
-/// bounded `AsyncStream<SampleBox>` for the recorder to consume.
+/// What a capture session produces: the display's pixel size, the screen-frame
+/// stream, and (when the mic is available + permitted) the audio-sample stream.
+struct CaptureStreams: Sendable {
+    let size: PixelSize
+    let video: AsyncStream<SampleBox>
+    let audio: AsyncStream<SampleBox>?
+}
+
+/// Owns the `SCStream` (and optional mic `AVCaptureSession`) and bridges their
+/// callback-queue frames into ordered, bounded `AsyncStream<SampleBox>`s.
 actor CaptureEngine {
     private var stream: SCStream?
     private var adapter: StreamOutputAdapter?
     private var continuation: AsyncStream<SampleBox>.Continuation?
+    private var mic: MicrophoneCapture?
     private let sampleQueue = DispatchQueue(
         label: "com.connorodea.ScreenRecStudio.capture", qos: .userInitiated
     )
 
-    /// Picks the main display, starts capturing it, and returns its backing-pixel
-    /// size (so the writer matches exactly) plus the frame stream to consume.
-    func start(frameRate: Int, showsCursor: Bool) async throws -> (size: PixelSize, frames: AsyncStream<SampleBox>) {
+    /// Picks the main display, starts capturing it (and the mic, if requested and
+    /// permitted), and returns the pixel size plus the frame stream(s) to consume.
+    /// Mic is best-effort: if permission is denied or no device exists, `audio` is
+    /// nil and we record video-only rather than failing.
+    func start(frameRate: Int, showsCursor: Bool, captureMic: Bool) async throws -> CaptureStreams {
         let box = try await Permissions.fetchShareableContent()
         let display = try ShareableContent.mainDisplay(in: box.content)
         let size = ShareableContent.pixelSize(for: display)
@@ -51,12 +64,39 @@ actor CaptureEngine {
         self.stream = stream
         self.adapter = adapter
         self.continuation = sink
-        return (size, frames)
+
+        let audio = captureMic ? await startMicrophone() : nil
+        return CaptureStreams(size: size, video: frames, audio: audio)
     }
 
-    /// Stops the stream first (no more frames), then closes the frame stream so the
-    /// consumer drains and exits.
+    /// Best-effort mic start. Returns the audio stream, or nil if unavailable.
+    private func startMicrophone() async -> AsyncStream<SampleBox>? {
+        guard await requestMicAccess() else { return nil }
+        var sink: AsyncStream<SampleBox>.Continuation!
+        let frames = AsyncStream(SampleBox.self, bufferingPolicy: .bufferingNewest(8)) { sink = $0 }
+        let mic = MicrophoneCapture(continuation: sink)
+        do {
+            try mic.start()
+            self.mic = mic
+            return frames
+        } catch {
+            sink.finish()
+            return nil
+        }
+    }
+
+    private func requestMicAccess() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: return true
+        case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
+        default: return false
+        }
+    }
+
+    /// Stops both sources, then closes the frame streams so consumers drain and exit.
     func stop() async throws {
+        mic?.stop()
+        mic = nil
         if let stream {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
                 stream.stopCapture { error in

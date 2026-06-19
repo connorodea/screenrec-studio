@@ -16,10 +16,12 @@ final class RecordingCoordinator: ObservableObject {
 
     private let engine = CaptureEngine()
     private let recorder = ScreenRecorder()
-    private var consumeTask: Task<Void, Never>?
+    private var videoTask: Task<Void, Never>?
+    private var audioTask: Task<Void, Never>?
 
     private let frameRate = 60
     private let showsCursor = true
+    private let captureMic = true
 
     // MARK: - Intents
 
@@ -53,17 +55,29 @@ final class RecordingCoordinator: ObservableObject {
 
     private func beginCapture() async {
         do {
-            let (size, frames) = try await engine.start(frameRate: frameRate, showsCursor: showsCursor)
+            let streams = try await engine.start(
+                frameRate: frameRate, showsCursor: showsCursor, captureMic: captureMic
+            )
             transition(to: .ready)
 
             let url = try OutputURLProvider().makeURL(now: Date())
-            let settings = VideoSettings(width: size.width, height: size.height, frameRate: frameRate)
-            try await recorder.begin(url: url, videoSettings: settings)
+            let videoSettings = VideoSettings(
+                width: streams.size.width, height: streams.size.height, frameRate: frameRate
+            )
+            let audioSettings: AudioSettings? = streams.audio != nil ? AudioSettings() : nil
+            try await recorder.begin(url: url, videoSettings: videoSettings, audioSettings: audioSettings)
 
-            // Ordered consume loop — FIFO into the recorder actor.
-            consumeTask = Task { [recorder] in
-                for await box in frames {
+            // Ordered consume loops — FIFO into the recorder actor.
+            videoTask = Task { [recorder] in
+                for await box in streams.video {
                     await recorder.ingest(box)
+                }
+            }
+            if let audio = streams.audio {
+                audioTask = Task { [recorder] in
+                    for await box in audio {
+                        await recorder.ingestAudio(box)
+                    }
                 }
             }
 
@@ -77,15 +91,19 @@ final class RecordingCoordinator: ObservableObject {
 
     private func finishCapture() async {
         do {
-            try await engine.stop()      // stop stream + close frame stream
-            await consumeTask?.value     // drain buffered frames into the recorder
-            consumeTask = nil
+            try await engine.stop()      // stop both sources + close the frame streams
+            await videoTask?.value       // drain buffered frames into the recorder
+            await audioTask?.value
+            videoTask = nil
+            audioTask = nil
             let url = try await recorder.finish()
             startedAt = nil
             transition(to: .done(url))
         } catch {
-            consumeTask?.cancel()
-            consumeTask = nil
+            videoTask?.cancel()
+            audioTask?.cancel()
+            videoTask = nil
+            audioTask = nil
             startedAt = nil
             transition(to: .error(Self.message(for: error)))
         }

@@ -1,12 +1,14 @@
 # ScreenRec Studio
 
-A native-macOS screen recorder + video editor (a ScreenFlow-class tool), built
-phase by phase. See `docs/` / the build spec for the full roadmap.
+A native-macOS screen recorder evolving toward an AI-enriched, instantly-shareable
+"native Loom." Built phase by phase — see [`docs/roadmap.md`](docs/roadmap.md) for the
+product direction and competitive positioning.
 
-> **Status: Phase 0 — capture spike.** The app builds, requests Screen Recording
-> permission, captures the **main display** via ScreenCaptureKit, and writes an
-> **H.264 `.mp4` (video only)** to `~/Movies/ScreenRecStudio/`. Audio, webcam, the
-> editor timeline, and export are later phases.
+> **Status: Phase A1 — screen + mic.** The app records the **main display**
+> (ScreenCaptureKit) **plus the microphone** (AVCaptureSession), muxing H.264 video +
+> AAC audio into a single `.mp4` in `~/Movies/ScreenRecStudio/`. Mic is best-effort:
+> if permission is denied or no device exists, it records video-only. Webcam PiP,
+> cloud upload + shareable link, and the AI layer are later phases.
 
 ## Requirements
 
@@ -64,21 +66,24 @@ open "$(xcodebuild -project ScreenRecStudio.xcodeproj -scheme ScreenRecStudio -s
 
 Then walk the checklist:
 
-1. **Start Recording** → the macOS **Screen Recording** permission prompt appears
-   (or the app shows the permission-error state with an *Open Privacy Settings*
-   button). Grant it under **System Settings ▸ Privacy & Security ▸ Screen
-   Recording**, relaunch if asked.
+1. **Start Recording** → on first run, the **Screen Recording** and **Microphone**
+   permission prompts appear (or the app shows the permission-error state with an
+   *Open Privacy Settings* button). Grant Screen Recording under **System Settings ▸
+   Privacy & Security ▸ Screen Recording** (relaunch if asked) and allow the mic.
 2. After granting, **Start** → the UI shows **Recording** with a running timer and
-   a red indicator.
+   a red indicator. **Talk** while recording.
 3. Move windows / play a video for ~10 seconds so the frames aren't blank.
 4. **Stop** → the UI goes **Finishing → Saved**.
 5. **Reveal in Finder** → confirm `~/Movies/ScreenRecStudio/<timestamp>.mp4` exists
    and is non-zero.
-6. Inspect the file (QuickTime or `ffprobe`): codec **h264**, resolution equals the
-   main display's **pixel** size (e.g. 3456×2234 on a 16″ Retina, not the point
-   size), duration ≈ recording length, cursor visible, **no** audio track.
-7. Record again → a new timestamped file, no overwrite.
-8. Error smoke test: revoke permission in Settings → **Start** → app shows the
+6. Inspect the file (QuickTime or `ffprobe`): video codec **h264** at the main
+   display's **pixel** size (e.g. 3456×2234 on a 16″ Retina), an **AAC audio track**,
+   duration ≈ recording length, cursor visible.
+7. **Play it back**: your voice should be **in sync** with the on-screen action
+   (A/V are anchored on a shared host clock). If you denied the mic, the file is
+   video-only — that's the expected graceful degrade.
+8. Record again → a new timestamped file, no overwrite.
+9. Error smoke test: revoke Screen Recording in Settings → **Start** → app shows the
    error state with the settings button, no crash.
 
 ## Architecture (Phase 0)

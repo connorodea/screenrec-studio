@@ -8,22 +8,41 @@ import AVFoundation
 actor ScreenRecorder {
     private var writer: AVAssetWriter?
     private var input: AVAssetWriterInput?
+    private var audioInput: AVAssetWriterInput?
     private var outputURL: URL?
     private var started = false
     private var lastPresentationTime: CMTime = .zero
     private var frameCount = 0
 
-    /// Prepares the writer for `url` with the given H.264 settings. Does not start
-    /// the session — that happens on the first ingested frame, anchored to its PTS.
-    func begin(url: URL, videoSettings: VideoSettings) throws {
+    /// Prepares the writer for `url` with the given H.264 settings, plus an optional
+    /// AAC audio track. Does not start the session — that happens on the first
+    /// ingested *video* frame, which anchors the shared A/V timeline to its PTS.
+    ///
+    /// Screen frames (ScreenCaptureKit) and mic samples (AVCaptureSession) are both
+    /// stamped on the host clock, so appending each with its native PTS keeps audio
+    /// and video in sync. Audio that arrives before the first video frame (pre-roll)
+    /// is dropped so the video track cleanly defines t=0.
+    func begin(url: URL, videoSettings: VideoSettings, audioSettings: AudioSettings?) throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings.outputSettings)
-        input.expectsMediaDataInRealTime = true
-        guard writer.canAdd(input) else { throw RecorderError.cannotAddInput }
-        writer.add(input)
+
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings.outputSettings)
+        videoInput.expectsMediaDataInRealTime = true
+        guard writer.canAdd(videoInput) else { throw RecorderError.cannotAddInput }
+        writer.add(videoInput)
+
+        var audio: AVAssetWriterInput?
+        if let audioSettings {
+            let a = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings.outputSettings)
+            a.expectsMediaDataInRealTime = true
+            if writer.canAdd(a) {
+                writer.add(a)
+                audio = a
+            }
+        }
 
         self.writer = writer
-        self.input = input
+        self.input = videoInput
+        self.audioInput = audio
         self.outputURL = url
         self.started = false
         self.lastPresentationTime = .zero
@@ -54,6 +73,16 @@ actor ScreenRecorder {
         }
     }
 
+    /// Appends one mic sample. Dropped until the video session has started (so
+    /// pre-roll audio never lands before t=0), then back-pressure-guarded like video.
+    func ingestAudio(_ box: SampleBox) {
+        guard started, let writer, let audioInput else { return }
+        let sampleBuffer = box.buffer
+        guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
+        guard writer.status == .writing, audioInput.isReadyForMoreMediaData else { return }
+        audioInput.append(sampleBuffer)
+    }
+
     /// Finalizes the file. Caller MUST have stopped the capture stream first so no
     /// frames arrive during finalization (stopCapture → finish).
     func finish() async throws -> URL {
@@ -68,6 +97,7 @@ actor ScreenRecorder {
         }
 
         input.markAsFinished()
+        audioInput?.markAsFinished()
         writer.endSession(atSourceTime: lastPresentationTime)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             writer.finishWriting { continuation.resume() }
@@ -93,6 +123,7 @@ actor ScreenRecorder {
         if let url { try? FileManager.default.removeItem(at: url) }
         writer = nil
         input = nil
+        audioInput = nil
         outputURL = nil
         started = false
         lastPresentationTime = .zero

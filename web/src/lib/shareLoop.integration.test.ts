@@ -4,6 +4,7 @@ import { handleStreamWebhook, type StreamWebhookDeps } from "./handleStreamWebho
 import { runAiPipeline, type AiPipelineDeps } from "./aiPipeline";
 import { handleWatch, handleVideoMetadata, type VideoReadDeps } from "./handleVideoRead";
 import { handleUploadComplete, type UploadCompleteDeps } from "./handleUploadComplete";
+import { cloudflareStreamUrls } from "./streamUrls";
 import { computeSignature } from "./webhook";
 import { transition } from "./videoStatus";
 import type { ChapterMarker, TranscriptSegment, VideoRow } from "./watchViewModel";
@@ -23,7 +24,7 @@ import type { ChapterMarker, TranscriptSegment, VideoRow } from "./watchViewMode
 
 const WEBHOOK_SECRET = "whsec_integration";
 const WEBHOOK_TIME = "1700000000";
-const CF_CUSTOMER = "customer-test";
+const CF_HOST = "customer-test.cloudflarestream.com";
 
 interface StoredVideo extends VideoRow {
   id: string;
@@ -43,15 +44,13 @@ function createStore() {
     if (!v) throw new Error(`no video ${id}`);
     return v;
   };
-  const hls = (uid: string) =>
-    `https://${CF_CUSTOMER}.cloudflarestream.com/${uid}/manifest/video.m3u8`;
+  const hls = (uid: string) => cloudflareStreamUrls(CF_HOST, uid).hls;
 
   return {
     byId,
     aiQueue,
     hls,
-    audioUrlFor: (id: string) =>
-      `https://${CF_CUSTOMER}.cloudflarestream.com/${get(id).streamUid}/downloads/default.mp4`,
+    audioUrlFor: (id: string) => cloudflareStreamUrls(CF_HOST, get(id).streamUid).mp4Download,
 
     // --- createUpload deps ---
     insertVideo: async (row: { slug: string; streamUid: string; status: "awaiting_upload" }) => {

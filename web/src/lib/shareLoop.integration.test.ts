@@ -3,6 +3,7 @@ import { createUpload, type CreateUploadDeps } from "./createUpload";
 import { handleStreamWebhook, type StreamWebhookDeps } from "./handleStreamWebhook";
 import { runAiPipeline, type AiPipelineDeps } from "./aiPipeline";
 import { handleWatch, handleVideoMetadata, type VideoReadDeps } from "./handleVideoRead";
+import { handleUploadComplete, type UploadCompleteDeps } from "./handleUploadComplete";
 import { computeSignature } from "./webhook";
 import { transition } from "./videoStatus";
 import type { ChapterMarker, TranscriptSegment, VideoRow } from "./watchViewModel";
@@ -73,10 +74,10 @@ function createStore() {
       return { id };
     },
 
-    // Represents the upload-complete signal (whoever ends up owning it): the only
-    // legal predecessor of `ready` is `processing`.
-    markProcessing: (uid: string) => {
-      const v = get(byUid.get(uid)!);
+    // Data-layer transition now driven by the real handleUploadComplete handler
+    // (the owner of awaiting_upload -> processing).
+    markProcessingById: async (id: string) => {
+      const v = get(id);
       v.status = transition(v.status, "processing");
     },
 
@@ -123,7 +124,8 @@ function createStore() {
       const id = bySlug.get(slug);
       return id ? ({ ...get(id) } as VideoRow) : null;
     },
-    findVideoById: async (id: string) => (byId.has(id) ? ({ ...get(id) } as VideoRow) : null),
+    findVideoById: async (id: string): Promise<StoredVideo | null> =>
+      byId.has(id) ? { ...get(id) } : null,
   };
 }
 
@@ -219,8 +221,20 @@ describe("share loop (end-to-end, in-memory)", () => {
     expect(pollAwaiting.body.status).toBe("awaiting_upload");
     expect(pollAwaiting.body.transcriptReady).toBe(false);
 
-    // 2. Upload completes -> processing (the missing-owner transition, modeled here).
-    store.markProcessing(STREAM_UID);
+    // 2. Upload completes -> the real handler owns awaiting_upload -> processing.
+    const uploadCompleteDeps: UploadCompleteDeps = {
+      findVideoById: store.findVideoById,
+      markProcessing: store.markProcessingById,
+    };
+    const completed = await handleUploadComplete(uploadCompleteDeps, { videoId: ticket.videoId });
+    expect(completed.status).toBe(200);
+    expect(completed.body).toEqual({ status: "processing" });
+    const pollProcessing = await handleVideoMetadata(readDeps, ticket.videoId);
+    expect(pollProcessing.body.status).toBe("processing");
+
+    // Idempotent: a duplicate upload-complete signal is a harmless no-op.
+    const dup = await handleUploadComplete(uploadCompleteDeps, { videoId: ticket.videoId });
+    expect(dup.body).toEqual({ status: "processing", alreadyAdvanced: true });
 
     // 3. Cloudflare fires the signed `ready` webhook.
     const hook = await handleStreamWebhook(webhookDeps, signedWebhook(STREAM_UID));
@@ -296,7 +310,10 @@ describe("share loop (end-to-end, in-memory)", () => {
     const upload = await createUpload(uploadDeps, { filename: "r.mp4", durationSeconds: 5, sizeBytes: 1024 });
     const { videoId } = upload.body as { videoId: string };
 
-    store.markProcessing(STREAM_UID);
+    await handleUploadComplete(
+      { findVideoById: store.findVideoById, markProcessing: store.markProcessingById },
+      { videoId }
+    );
     await handleStreamWebhook(webhookDeps, signedWebhook(STREAM_UID));
 
     const ai = await runAiPipeline(aiDeps, { videoId, audioUrl: store.audioUrlFor(videoId) });

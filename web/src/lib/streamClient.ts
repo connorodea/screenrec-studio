@@ -1,4 +1,5 @@
 import { buildStreamDirectUploadRequest } from "./streamUpload";
+import { HttpClientError } from "./httpError";
 
 /**
  * The live Cloudflare Stream client — the real `createStreamUpload` dependency
@@ -52,9 +53,7 @@ export async function createDirectUpload(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(
-      `Cloudflare Stream direct-upload failed (${res.status})${body ? `: ${body}` : ""}`
-    );
+    throw new HttpClientError("Cloudflare Stream", res.status, body || undefined);
   }
 
   const uploadURL = res.headers.get("Location");

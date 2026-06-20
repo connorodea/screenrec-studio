@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runDeepgramRequest } from "./deepgramClient";
 import { buildDeepgramRequest } from "./deepgramRequest";
+import { HttpClientError } from "./httpError";
 
 function fakeResponse(opts: { ok: boolean; status: number; json?: unknown; body?: string }) {
   return {
@@ -32,11 +33,13 @@ describe("runDeepgramRequest", () => {
     expect(JSON.parse(init.body)).toEqual({ url: "https://cf/a.mp4" });
   });
 
-  it("throws on a non-2xx response (so runAiPipeline marks the video failed)", async () => {
+  it("throws an HttpClientError carrying the status on a non-2xx response", async () => {
     const req = buildDeepgramRequest("https://cf/a.mp4", "dg-key");
     const fetchMock = vi.fn(async (_url: string, _init: Init) =>
       fakeResponse({ ok: false, status: 401, body: "Unauthorized" })
     );
-    await expect(runDeepgramRequest(fetchMock, req)).rejects.toThrow(/401/);
+    const err = await runDeepgramRequest(fetchMock, req).catch((e) => e);
+    expect(err).toBeInstanceOf(HttpClientError);
+    expect((err as HttpClientError).status).toBe(401);
   });
 });

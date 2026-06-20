@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createDirectUpload, type StreamClientConfig } from "./streamClient";
+import { HttpClientError } from "./httpError";
 
 function fakeResponse(opts: {
   ok: boolean;
@@ -59,9 +60,11 @@ describe("createDirectUpload", () => {
     );
   });
 
-  it("throws on a non-2xx response (so createUpload maps it to 502)", async () => {
+  it("throws an HttpClientError carrying the status on a non-2xx response", async () => {
     const fetchMock = vi.fn(async () => fakeResponse({ ok: false, status: 403, body: "Forbidden" }));
-    await expect(createDirectUpload(config(fetchMock), { uploadLength: 1 })).rejects.toThrow(/403/);
+    const err = await createDirectUpload(config(fetchMock), { uploadLength: 1 }).catch((e) => e);
+    expect(err).toBeInstanceOf(HttpClientError);
+    expect((err as HttpClientError).status).toBe(403);
   });
 
   it("throws when the response is missing the uid / uploadURL headers", async () => {

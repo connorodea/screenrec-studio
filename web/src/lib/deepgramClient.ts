@@ -1,4 +1,5 @@
 import type { buildDeepgramRequest } from "./deepgramRequest";
+import { HttpClientError } from "./httpError";
 
 /**
  * The live Deepgram client — the real `callDeepgram` dependency that
@@ -30,7 +31,7 @@ export async function runDeepgramRequest(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`Deepgram transcription failed (${res.status})${body ? `: ${body}` : ""}`);
+    throw new HttpClientError("Deepgram", res.status, body || undefined);
   }
 
   return res.json();

@@ -6,7 +6,8 @@
   "description": "ScreenRec Studio backend + watch page (Next.js @ hetznerCO). See ../docs/share-loop-spec.md.",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
@@ -14,6 +15,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
     "zod": "^4.4.3"
   }
 }

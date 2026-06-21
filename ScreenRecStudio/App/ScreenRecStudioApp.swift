@@ -2,14 +2,17 @@ import SwiftUI
 
 /// Application entry point.
 ///
-/// Phase 0 is a single-window capture spike. This entry is intentionally minimal
-/// until Tier 4, when `RecordingCoordinator` and the real `ContentView` exist and
-/// get wired in here (mirroring the `@State`-owned `AppState` pattern in Clarc).
+/// Phase 0 is a single-window capture spike. The `RecordingCoordinator` is owned
+/// here via `@State` and injected into the environment so the whole view tree
+/// reads one source of truth (the `@State`-owned `AppState` pattern from Clarc).
 @main
 struct ScreenRecStudioApp: App {
+    @StateObject private var coordinator = RecordingCoordinator()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(coordinator)
         }
         .defaultSize(width: 460, height: 340)
         .windowResizability(.contentSize)
